@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tweet Archive</title>
+<style>
+	body {
+		background-color: #000000;
+		color: #FFFFFF;
+		font-family: Helvetica;
+		font-weight: 250;
+		font-size: 15px;
+	}
+    .card {
+        border: 5px solid #1b1b1b;
+        border-radius: 5px;
+        padding: 10px;
+        margin-bottom: 20px;
+		max-width: 650px;
+        background-color: #0c0c0c;
+    }
+    .card img {
+        width: 300px;
+        height: auto;
+        margin: 10px;
+    }
+    .card video {
+        max-width: 100%;
+        height: auto;
+    }
+    .card p:not(:nth-child(2)) {
+        color: grey;
+    }
+    .card a {
+        color: #74a3a5;
+        text-decoration: none;
+    }
+
+    .card a:hover {
+        text-decoration: underline;
+    }
+</style>
+</head>
+<body>
+
+<div id="entries"></div>
+
+<script>
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+}
+
+async function fetchJSONFiles() {
+    try {
+        const response = await fetch('listOfFiles.txt');
+        const fileList = await response.text();
+
+        const jsonFiles = fileList.trim().split('\n');
+
+        const jsonDataPromises = jsonFiles.map(async file => {
+            const jsonData = await fetch(`${file.trim()}.json`);
+            return jsonData.json();
+        });
+
+        const jsonEntries = await Promise.all(jsonDataPromises);
+
+		jsonEntries.sort((a, b) => new Date(b.otherPropertiesMap.created_at) - new Date(a.otherPropertiesMap.created_at));
+
+        for (const json of jsonEntries) {
+            const created_at = formatDate(json.otherPropertiesMap.created_at);
+            const full_url = json.otherPropertiesMap.full_url;
+            const tweet_text = json.otherPropertiesMap.tweet_text;
+            const owner_screen_name = json.otherPropertiesMap.owner_screen_name;
+            const owner_display_name = json.otherPropertiesMap.owner_display_name;
+
+            let entryHTML = `
+                <div class="card">
+                    <p><a href="https://twitter.com/${owner_screen_name}">${owner_display_name} (@${owner_screen_name})</a> - ${created_at}</p>
+                    <p>${tweet_text}</p>
+            `;
+
+            const mp4Exists = await fileExists(`${json.otherPropertiesMap.CustomFileName}_2.mp4`);
+            const jpg1Exists = await fileExists(`${json.otherPropertiesMap.CustomFileName}_1.jpg`);
+
+            if (mp4Exists) {
+                entryHTML += `<video width="320" height="240" controls autoplay>
+                                <source src="${json.otherPropertiesMap.CustomFileName}_2.mp4" type="video/mp4">
+                              Your browser does not support the video tag.
+                              </video>`;
+            }
+            else if (jpg1Exists) {
+                entryHTML += `<img src="${json.otherPropertiesMap.CustomFileName}_1.jpg" alt="Image" class="lazy-load" data-src="${json.otherPropertiesMap.CustomFileName}_1.jpg">`;
+
+                let additionalJpgIndex = 2;
+                let additionalJpgExists = true;
+                while (additionalJpgExists) {
+                    additionalJpgExists = await fileExists(`${json.otherPropertiesMap.CustomFileName}_${additionalJpgIndex}.jpg`);
+                    if (additionalJpgExists) {
+                        entryHTML += `<img src="${json.otherPropertiesMap.CustomFileName}_${additionalJpgIndex}.jpg" alt="Image" class="lazy-load" data-src="${json.otherPropertiesMap.CustomFileName}_${additionalJpgIndex}.jpg">`;
+                        additionalJpgIndex++;
+                    }
+                }
+            }
+            entryHTML += `<p><a href="${full_url}">${full_url}</a></p>`;
+            entryHTML += `</div>`;
+            document.getElementById('entries').innerHTML += entryHTML;
+        }
+
+        lazyLoad();
+        
+        window.addEventListener('scroll', lazyLoad);
+        
+    } catch (error) {
+        console.error('Error fetching JSON files:', error);
+    }
+}
+
+async function fileExists(url) {
+    try {
+        const response = await fetch(url, { method: 'HEAD' });
+        return response.ok;
+    } catch (error) {
+        return false;
+    }
+}
+
+function lazyLoad() {
+    const images = document.querySelectorAll('.lazy-load');
+    images.forEach(image => {
+        if (elementInViewport(image)) {
+            image.setAttribute('src', image.getAttribute('data-src'));
+            image.classList.remove('lazy-load');
+        }
+    });
+}
+
+function elementInViewport(el) {
+    const rect = el.getBoundingClientRect();
+    return (
+        rect.top >= 0 &&
+        rect.left >= 0 &&
+        rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+        rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+    );
+}
+
+fetchJSONFiles();
+</script>
+
+</body>
+</html>
